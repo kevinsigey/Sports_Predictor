@@ -22,7 +22,7 @@
  * original version asserted the opposite. Requiring `secrets.GITHUB_TOKEN` here
  * would have failed on the first merge with
  * `denied: permission_denied: write_package` *after* a clean build, because
- * ghcr.io/kevocado/sports-predictor is user-scoped and not linked to this
+ * ghcr.io/kevinsigey/sports-predictor is user-scoped and not linked to this
  * repository. That is indistinguishable from a permissions bug and is not one.
  */
 import { describe, expect, it } from "vitest";
@@ -36,7 +36,7 @@ const WORKFLOW_DIR = join(REPO, ".github", "workflows");
 const WORKFLOW = join(WORKFLOW_DIR, "deploy.yml");
 
 /** Must match `image:` in vps-stack/compose.yml. */
-const IMAGE = "ghcr.io/kevocado/sports-predictor";
+const IMAGE = "ghcr.io/kevinsigey/sports-predictor";
 /** Must match the service key in vps-stack/compose.yml. */
 const SERVICE = "sports";
 
@@ -130,7 +130,7 @@ const checkNoCatchAll = (src: string): void => {
  *
  * `GITHUB_TOKEN` would be the target state — a PAT is a credential that outlives
  * the repo and has to be rotated by hand — but it may only write to packages
- * LINKED to its own repository, and ghcr.io/kevocado/sports-predictor is not:
+ * LINKED to its own repository, and ghcr.io/kevinsigey/sports-predictor is not:
  *
  *     gh api /user/packages/container/sports-predictor --jq '.repository.full_name'
  *     -> null
