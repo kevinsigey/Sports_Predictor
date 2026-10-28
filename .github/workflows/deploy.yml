@@ -54,7 +54,7 @@ jobs:
         with:
           registry: ghcr.io
           # GHCR_PAT, not GITHUB_TOKEN, and that is not a preference.
-          # ghcr.io/kevocado/sports-predictor is USER-scoped, not linked to this
+          # ghcr.io/kevinsigey/sports-predictor is USER-scoped, not linked to this
           # repository, and GITHUB_TOKEN may only write to packages linked to its
           # own repo -- so the push dies with
           # `denied: permission_denied: write_package` AFTER the image has already
@@ -82,9 +82,9 @@ jobs:
 
       - name: Build and push Sports Predictor frontend image
         run: |
-          docker build -t ghcr.io/kevocado/sports-predictor:${{ github.sha }} -t ghcr.io/kevocado/sports-predictor:latest .
-          docker push ghcr.io/kevocado/sports-predictor:${{ github.sha }}
-          docker push ghcr.io/kevocado/sports-predictor:latest
+          docker build -t ghcr.io/kevinsigey/sports-predictor:${{ github.sha }} -t ghcr.io/kevinsigey/sports-predictor:latest .
+          docker push ghcr.io/kevinsigey/sports-predictor:${{ github.sha }}
+          docker push ghcr.io/kevinsigey/sports-predictor:latest
 
 
   # Legacy. Azure is being cut over to the VPS, so this stays off unless the
@@ -110,7 +110,7 @@ jobs:
           AZURE_RG: predictor-hub-rg
           AZURE_ENV: proudbay-f56b8dfa.eastus2
           APP_NAME: sports-predictor
-          IMAGE: ghcr.io/kevocado/sports-predictor:${{ github.sha }}
+          IMAGE: ghcr.io/kevinsigey/sports-predictor:${{ github.sha }}
         run: |
           # Create if doesn't exist (ports 80 for Caddy static serving)
           az containerapp create \

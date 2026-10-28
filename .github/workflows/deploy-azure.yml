@@ -25,9 +25,9 @@ jobs:
 
       - name: Build and push Sports Predictor frontend image
         run: |
-          docker build -t ghcr.io/kevocado/sports-predictor:${{ github.sha }} -t ghcr.io/kevocado/sports-predictor:latest .
-          docker push ghcr.io/kevocado/sports-predictor:${{ github.sha }}
-          docker push ghcr.io/kevocado/sports-predictor:latest
+          docker build -t ghcr.io/kevinsigey/sports-predictor:${{ github.sha }} -t ghcr.io/kevinsigey/sports-predictor:latest .
+          docker push ghcr.io/kevinsigey/sports-predictor:${{ github.sha }}
+          docker push ghcr.io/kevinsigey/sports-predictor:latest
 
       - name: Log in to Azure
         uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
@@ -41,7 +41,7 @@ jobs:
           AZURE_RG: predictor-hub-rg
           AZURE_ENV: proudbay-f56b8dfa.eastus2
           APP_NAME: sports-predictor
-          IMAGE: ghcr.io/kevocado/sports-predictor:${{ github.sha }}
+          IMAGE: ghcr.io/kevinsigey/sports-predictor:${{ github.sha }}
         run: |
           # Create if doesn't exist (ports 80 for Caddy static serving)
           az containerapp create \
