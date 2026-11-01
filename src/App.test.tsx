@@ -39,11 +39,11 @@ describe("family frame", () => {
     render(<App />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("NFL Predictor");
     const sports = screen.getByRole("navigation", { name: "Sports" });
-    // GlobalNav drops the Home entry (the wordmark is home) and lists the
-    // sports in canonical order: Premier League, NFL, College football, NBA,
-    // F1, then Paper Trading.
+    // GlobalNav leads with the Home entry (the hub), then lists the sports
+    // in canonical order: Premier League, NFL, College football, NBA, F1,
+    // then Paper Trading.
     expect([...sports.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
-      "Premier League", "NFL", "College football", "NBA", "F1", "Paper Trading",
+      "Home", "Premier League", "NFL", "College football", "NBA", "F1", "Paper Trading",
     ]);
     expect(screen.getByRole("link", { name: "NFL" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "College football" })).toHaveAttribute("href", "?sport=cfb");
