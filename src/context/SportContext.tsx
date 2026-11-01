@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { cfbApi, nflApi } from "../api/client";
 import type { Sport, SportApi } from "../types";
 
@@ -19,6 +19,17 @@ export function SportProvider({ children }: { children: ReactNode }) {
   // The URL owns the sport, so the family switcher's links, Back and shared
   // links all land on the right sport.
   const [sport, setSportState] = useState<Sport>(() => sportFromSearch(window.location.search));
+  // The tab icon follows the sport: a football for NFL, a helmet for CFB.
+  useEffect(() => {
+    let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      link.type = "image/svg+xml";
+      document.head.appendChild(link);
+    }
+    link.href = sport === "cfb" ? "/favicons/cfb.svg" : "/favicons/nfl.svg";
+  }, [sport]);
   const value = useMemo<SportContextValue>(() => {
     const setSport = (next: Sport) => {
       const params = new URLSearchParams(window.location.search);
