@@ -33,6 +33,10 @@
 // fills the latest-picks strip). A backend older than the split ignores
 // the parameter and inlines the rows; the page reads them from there and
 // never calls the picks route.
+//
+// Prop grading (NBA parity) sits between "Against the odds" and the folded
+// prop blocks as its own panel with its own route (`/prop-grading`): it
+// renders nothing until a backend serves graded days.
 
 import { useEffect, useRef, useState } from "react";
 import type { PerPickRow, TrackRecord, VsMarket, VsMarketMethod, YardageTrackRecord } from "../types";
@@ -48,6 +52,7 @@ import {
   WeekStrip,
   momentFor,
 } from "../predictor-ui";
+import PropGradingPanel from "../components/PropGradingPanel";
 import { brier, edgeWord, plural, rate, signedPoints } from "../lib/trackFormat";
 import { labelFor, toRecordModel } from "../lib/recordModel";
 import "./track-record.css";
@@ -162,6 +167,13 @@ export function TrackRecordPage() {
           <NotRecorded why="No market comparison is recorded for this sport yet — the tracker holds no closing lines to compare the model against." />
         )}
       </RecordBlock>
+
+      {/* Prop grading: every counted player projection against the box
+          score, NBA parity. The panel fetches its own route and renders
+          nothing at all until a backend serves graded days — no chrome,
+          no empty state — so its place in the flow is safe before the
+          backends land. */}
+      <PropGradingPanel />
 
       {/* Yardage markets: how far off the projected yardage was, per market. */}
       <details className="rounded-pr border border-pr-rule bg-pr-panel px-4 py-3 text-sm">

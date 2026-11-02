@@ -17,6 +17,7 @@ import type {
   OutPlayerEntry,
   PlayerPropPrediction,
   PowerRankingsResponse,
+  PropGrading,
   RetrainResponse,
   SignalsResponse,
   SportApi,
@@ -113,6 +114,10 @@ export function createApiClient(baseUrl: string): SportApi {
     // in production until the backend half lands.
     trackRecord: () => get<TrackRecord>("/track-record?picks=deferred"),
     trackRecordPicks: () => get<TrackRecordPicks>("/track-record/picks"),
+    // Prop grading, NBA parity: counted projections graded against the box
+    // score. A backend that does not serve the route yet 404s; the panel
+    // swallows every failure and renders nothing (see PropGradingPanel).
+    propGrading: () => get<PropGrading>("/prop-grading"),
     retrain: () => post<RetrainResponse>("/retrain"),
     gameVerdict: (gameId) => getOrNull<GameVerdict>(`/games/${gameId}/verdict`),
     /** Spec §3's per-fixture signal payloads. Present on both clients because

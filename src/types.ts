@@ -426,6 +426,45 @@ export interface TrackRecord {
 export interface TrackRecordPicks {
   per_pick: PerPickRow[];
 }
+/**
+ * `GET /prop-grading` — every counted player projection graded against the
+ * box score, NBA's prop grading ported to this site. The grade judges the
+ * model in units of the stat's own holdout MAE (On the number ≤ ½×, Close
+ * ≤ 1×, Off ≤ 2×, Way off beyond); `grade: null` means the backend holds no
+ * honest holdout MAE for the stat, so the row carries its delta chip only.
+ * The delta is actual − projected and follows the PLAYER: positive when he
+ * beat the projection. `stats` carries the errors the grades were cut from
+ * (null where the backend has none to state).
+ */
+export type PropGrade = "On the number" | "Close" | "Off" | "Way off";
+export interface PropGradingRow {
+  player: string;
+  team: string;
+  opponent: string;
+  stat: string;
+  projected: number;
+  actual: number;
+  delta: number;
+  grade: PropGrade | null;
+  made_before_kickoff: boolean;
+  kickoff: string;
+}
+export interface PropGradingGame {
+  game_id: string;
+  label: string;
+  rows: PropGradingRow[];
+}
+export interface PropGradingDay {
+  date: string;
+  most_confident: PropGradingRow[];
+  biggest_surprises: PropGradingRow[];
+  games: PropGradingGame[];
+}
+export interface PropGrading {
+  generated_at: string;
+  stats: Record<string, { holdout_mae: number | null; naive_mae: number | null }>;
+  days: PropGradingDay[];
+}
 export interface RetrainResponse { trained_at: string; chosen_candidate: string; }
 export interface MarketVerdict { hit: boolean; predicted: string; actual?: string; }
 export interface GameVerdict { game_id: string; resolved: boolean; moneyline: MarketVerdict; ats: MarketVerdict | null; totals: MarketVerdict | null; actual_home_score?: number; actual_away_score?: number; home_spread_line?: number | null; total_line?: number | null; }
@@ -584,6 +623,12 @@ export interface SportApi {
    *  `games.per_pick` in `/track-record` instead, and the page reads it from
    *  there and never calls this. */
   trackRecordPicks?: () => Promise<TrackRecordPicks>;
+  /** `GET /prop-grading` — counted player projections graded against the box
+   *  score (see PropGrading). Optional because the route is newer than this
+   *  frontend: a backend that does not serve it yet 404s, and the grading
+   *  panel treats any failure — or a payload with no days — as absence and
+   *  renders nothing at all. */
+  propGrading?: () => Promise<PropGrading>;
   retrain: () => Promise<RetrainResponse>;
   gameVerdict: (gameId: string) => Promise<GameVerdict | null>;
   predictionsForWeek: (season: number, week: number) => Promise<WeekPrediction[]>;

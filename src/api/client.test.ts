@@ -59,6 +59,15 @@ describe("createApiClient new endpoints", () => {
     await api.trackRecordPicks!();
     expect(fetchMock).toHaveBeenCalledWith("https://example.test/api/track-record/picks", expect.anything());
   });
+
+  it("propGrading hits the prop-grading route", async () => {
+    const api = createApiClient("https://example.test/api/");
+    // Optional in SportApi (the route is newer than the frontend); the real
+    // client always provides it.
+    expect(api.propGrading).toBeDefined();
+    await api.propGrading!();
+    expect(fetchMock).toHaveBeenCalledWith("https://example.test/api/prop-grading", expect.anything());
+  });
 });
 
 describe("createApiClient TTL cache", () => {
