@@ -414,6 +414,18 @@ export interface TrackRecord {
   /** Home-side reliability buckets (winner/spread/total). The routes attach them at the TOP level of the response. */
   calibration?: GameCalibration;
 }
+/**
+ * The row-level half of the track record, split out of `/track-record`.
+ *
+ * CFB's summary payload was 5.9 MB because `player_props.per_pick` alone
+ * inlined 18,796 rows the page never renders, and `games.per_pick` added
+ * another ~900. The summary response now carries tallies only; the game-pick
+ * rows live here, fetched only when the reader opens the every-pick fold.
+ * Prop per-pick rows are not served at all: no surface renders them.
+ */
+export interface TrackRecordPicks {
+  per_pick: PerPickRow[];
+}
 export interface RetrainResponse { trained_at: string; chosen_candidate: string; }
 export interface MarketVerdict { hit: boolean; predicted: string; actual?: string; }
 export interface GameVerdict { game_id: string; resolved: boolean; moneyline: MarketVerdict; ats: MarketVerdict | null; totals: MarketVerdict | null; actual_home_score?: number; actual_away_score?: number; home_spread_line?: number | null; total_line?: number | null; }
@@ -566,6 +578,12 @@ export interface SportApi {
   /** NFL only: Kalshi's live per-player ladders (fail-soft on the backend; absent on CFB). */
   marketLines?: (season: number, week: number) => Promise<{ fetched_at: string | null; lines: import("./lib/lineCheck").MarketLine[] }>;
   trackRecord: () => Promise<TrackRecord>;
+  /** `GET /track-record/picks` — the row-level game picks, fetched lazily by
+   *  the track record page (see TrackRecordPicks). Optional because a backend
+   *  older than the payload split does not serve the route: it inlines
+   *  `games.per_pick` in `/track-record` instead, and the page reads it from
+   *  there and never calls this. */
+  trackRecordPicks?: () => Promise<TrackRecordPicks>;
   retrain: () => Promise<RetrainResponse>;
   gameVerdict: (gameId: string) => Promise<GameVerdict | null>;
   predictionsForWeek: (season: number, week: number) => Promise<WeekPrediction[]>;

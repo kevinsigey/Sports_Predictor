@@ -18,13 +18,24 @@
 //  - `track-record.css` and the ad-hoc section nav are gone; sections are
 //    `RecordBlock`s.
 //
-// Open question: yardage, position, points and the vs-market comparison were
-// not carried onto the kit in this phase. Should they be kept as
-// sport-specific `RecordBlock` plugs (as NBA keeps its Disagreements block),
-// or is the simplified kit page above the right shape for Sports?
+// The open question from the kit rebuild — whether yardage, position, points
+// and the vs-market comparison belong on this page as sport-specific plugs —
+// is answered: they stay, as plugs. "Against the odds" is a first-class
+// `RecordBlock` (the payload has carried `vs_market` all along; the page
+// simply never rendered it), the yardage tiles carry the signed bias beside
+// the MAE (NBA parity), and the prop blocks stay folded below. The
+// vs-market method text is stated in "How this is counted", once, like
+// everything else about how these numbers are made.
+//
+// Row-level picks are no longer part of the summary payload: the client
+// asks for `picks=deferred`, and the every-pick rows are fetched from
+// `/track-record/picks` only when the reader opens that fold (which also
+// fills the latest-picks strip). A backend older than the split ignores
+// the parameter and inlines the rows; the page reads them from there and
+// never calls the picks route.
 
-import { useEffect, useState } from "react";
-import type { TrackRecord, YardageTrackRecord } from "../types";
+import { useEffect, useRef, useState } from "react";
+import type { PerPickRow, TrackRecord, VsMarket, VsMarketMethod, YardageTrackRecord } from "../types";
 import { useSport } from "../context/SportContext";
 import {
   CalibrationBlock,
@@ -37,7 +48,7 @@ import {
   WeekStrip,
   momentFor,
 } from "../predictor-ui";
-import { brier, plural, rate } from "../lib/trackFormat";
+import { brier, edgeWord, plural, rate, signedPoints } from "../lib/trackFormat";
 import { labelFor, toRecordModel } from "../lib/recordModel";
 import "./track-record.css";
 
@@ -53,10 +64,19 @@ export function TrackRecordPage() {
   const { api, sport } = useSport();
   const [record, setRecord] = useState<TrackRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Row-level picks, when they did NOT arrive inside the summary payload.
+  // `null` = not fetched yet; the fetch fires only when the every-pick fold
+  // is first opened (see the header note on the payload split).
+  const [loadedPicks, setLoadedPicks] = useState<PerPickRow[] | null>(null);
+  const [picksFailed, setPicksFailed] = useState(false);
+  const picksRequested = useRef(false);
 
   useEffect(() => {
     setRecord(null);
     setError(null);
+    setLoadedPicks(null);
+    setPicksFailed(false);
+    picksRequested.current = false;
     api.trackRecord().then(setRecord).catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [api, sport]);
 
@@ -65,10 +85,26 @@ export function TrackRecordPage() {
 
   const { games, player_props } = record;
   const { passing_yards, rushing_yards, receiving_yards } = player_props;
-  const model = toRecordModel(record);
+
+  // An older backend inlines the rows in the summary; a split backend omits
+  // them and serves /track-record/picks instead. Either way the page below
+  // reads one list, and the model (whose latest-picks strip derives from
+  // the rows) is built over the merged record.
+  const inlinePicks = games.per_pick;
+  const per_pick = loadedPicks ?? inlinePicks ?? [];
+  const modelRecord =
+    loadedPicks && !inlinePicks ? { ...record, games: { ...games, per_pick: loadedPicks } } : record;
+  const model = toRecordModel(modelRecord);
   const moment = momentFor(sport);
 
-  const per_pick = games.per_pick ?? [];
+  const loadPicks = () => {
+    if (inlinePicks || loadedPicks || picksRequested.current || !api.trackRecordPicks) return;
+    picksRequested.current = true;
+    api
+      .trackRecordPicks()
+      .then((r) => setLoadedPicks(r.per_pick ?? []))
+      .catch(() => setPicksFailed(true));
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -111,6 +147,22 @@ export function TrackRecordPage() {
         <RecentPicks picks={model.recent ?? []} limit={10} moment={moment} />
       </RecordBlock>
 
+      {/* Against the odds: the model against the closing line. First-class —
+          above the folded prop blocks — because whether the model adds
+          anything over the price is the first question a reader asks of a
+          record. The method is stated in "How this is counted", once. */}
+      <RecordBlock
+        id="tr-vs-market"
+        title="Against the odds"
+        caption="The model against the closing line: the games where the two disagreed, and how those calls went."
+      >
+        {games.vs_market ? (
+          <VsMarketBlock games={games} />
+        ) : (
+          <NotRecorded why="No market comparison is recorded for this sport yet — the tracker holds no closing lines to compare the model against." />
+        )}
+      </RecordBlock>
+
       {/* Yardage markets: how far off the projected yardage was, per market. */}
       <details className="rounded-pr border border-pr-rule bg-pr-panel px-4 py-3 text-sm">
         <summary className="cursor-pointer font-semibold text-pr-text">Yardage markets</summary>
@@ -121,9 +173,9 @@ export function TrackRecordPage() {
             caption="Mean absolute error: how far off the projected yardage was, per market, in yards."
           >
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-              <StatTile label="Passing yards" value={maeText(passing_yards)} sub={`${passing_yards.n_resolved} props`} />
-              <StatTile label="Rushing yards" value={maeText(rushing_yards)} sub={`${rushing_yards.n_resolved} props`} />
-              <StatTile label="Receiving yards" value={maeText(receiving_yards)} sub={`${receiving_yards.n_resolved} props`} />
+              <StatTile label="Passing yards" value={maeText(passing_yards)} sub={biasSub(passing_yards)} />
+              <StatTile label="Rushing yards" value={maeText(rushing_yards)} sub={biasSub(rushing_yards)} />
+              <StatTile label="Receiving yards" value={maeText(receiving_yards)} sub={biasSub(receiving_yards)} />
             </div>
           </RecordBlock>
         </div>
@@ -154,10 +206,22 @@ export function TrackRecordPage() {
         <div className="mt-3">{renderPoints(player_props)}</div>
       </details>
 
-      {per_pick.length > 0 && (
-        <details className="rounded-pr border border-pr-rule bg-pr-panel px-4 py-3 text-sm">
+      {(per_pick.length > 0 || (!inlinePicks && api.trackRecordPicks)) && (
+        <details
+          className="rounded-pr border border-pr-rule bg-pr-panel px-4 py-3 text-sm"
+          onToggle={(e) => {
+            if ((e.currentTarget as HTMLDetailsElement).open) loadPicks();
+          }}
+        >
           <summary className="cursor-pointer font-semibold text-pr-text">Every recorded pick</summary>
           <div className="mt-3">
+            {per_pick.length === 0 ? (
+              picksFailed ? (
+                <p className="text-sm text-pr-text-dim">We couldn&apos;t load the pick-by-pick detail. Close and reopen to try again.</p>
+              ) : (
+                <p className="text-sm text-pr-text-dim">Loading every recorded pick…</p>
+              )
+            ) : (
             <StatTable
               rows={[...per_pick].sort((a, b) => b.snapshotted_at.localeCompare(a.snapshotted_at))}
               rowKey={(r) => `${r.market}-${r.game_id}-${r.snapshotted_at}`}
@@ -189,11 +253,14 @@ export function TrackRecordPage() {
                 { key: "time", label: "Time made", value: (r) => formatPickTime(r.snapshotted_at) },
               ]}
             />
+            )}
           </div>
         </details>
       )}
 
-      <HowCounted moment={moment} headline={model.headline} />
+      <HowCounted moment={moment} headline={model.headline}>
+        {games.vs_market?.method && <VsMarketMethodNote method={games.vs_market.method} scope={games.vs_market.scope} />}
+      </HowCounted>
     </div>
   );
 }
@@ -201,6 +268,103 @@ export function TrackRecordPage() {
 function maeText(yardage: YardageTrackRecord): string {
   const mae = yardage.mean_absolute_error;
   return mae == null ? "—" : `${mae.toLocaleString("en-US")} yards`;
+}
+
+/**
+ * The yardage tile's second line: the count, then which way the error leans.
+ * `mean_signed_error` is mean(predicted − actual) on both backends (their
+ * stores say so in as many words), so a positive value means the projections
+ * run high. The words and the ±0.05 deadband are NBA's, verbatim, so a bias
+ * reads the same on both sites.
+ */
+function biasSub(yardage: YardageTrackRecord): string {
+  const count = `${yardage.n_resolved.toLocaleString("en-US")} props`;
+  const bias = yardage.mean_signed_error;
+  if (bias == null || !Number.isFinite(bias)) return `${count} · bias not measured`;
+  if (bias > 0.05) return `${count} · runs high by ${bias.toFixed(1)} yards`;
+  if (bias < -0.05) return `${count} · runs low by ${Math.abs(bias).toFixed(1)} yards`;
+  return `${count} · no lean`;
+}
+
+/**
+ * The model against the closing line, percent-forward: how often the model's
+ * side covered when it disagreed with the price, beside its overall spread
+ * record over the same priced games, and the average edge as a calibration
+ * check. The disagreement cohort is the payload's own object (never the
+ * loose `disagreement_n` re-derived), so the figure cannot drift from the
+ * games list the backend publishes with it.
+ */
+function VsMarketBlock({ games }: { games: TrackRecord["games"] }) {
+  const vm = games.vs_market!;
+  const cohort = vm.disagreement ?? { n: vm.disagreement_n, hit_rate: vm.disagreement_hit_rate, games: [] };
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <AccuracyCard
+          label="When the model disagrees"
+          accuracy={cohort.hit_rate}
+          graded={`${plural(cohort.n, "disagreement")} of ${plural(vm.n, "priced game")}`}
+          testId="vs-market-disagreement"
+        />
+        <AccuracyCard
+          label="Against the spread, overall"
+          accuracy={games.pct_ats_correct}
+          graded={games.n_ats == null ? "grade count not reported" : `${plural(games.n_ats, "game")} graded`}
+          testId="vs-market-overall"
+        />
+        <StatTile
+          label="Average edge"
+          value={vm.mean_edge_points == null ? "—" : `${signedPoints(vm.mean_edge_points)} pts`}
+          sub={edgeWord(vm.mean_edge_points)}
+        />
+      </div>
+      {(vm.mean_implied_home_cover_prob != null || vm.mean_model_home_cover_prob != null) && (
+        <p className="max-w-prose text-sm text-pr-text-dim" data-testid="vs-market-cover-line">
+          On average the closing line priced the home side at {rate(vm.mean_implied_home_cover_prob)} to cover; the
+          model said {rate(vm.mean_model_home_cover_prob)}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The order the method reads in: what population, how a price becomes a
+ *  probability, what edge is, what the cohort is, the league width behind
+ *  it, and — last, where a skim ends — that none of it is a profit claim. */
+const METHOD_ORDER: (keyof VsMarketMethod)[] = [
+  "population",
+  "implied_probability",
+  "edge",
+  "disagreement",
+  "sigma_league_meaning",
+  "not_a_profit_claim",
+];
+
+/** The vs-market method, stated inside "How this is counted" (the kit's
+ *  children slot exists for exactly this: a comparison method a sport has).
+ *  Only the backend's own strings are printed — never a paraphrase, which
+ *  would be a second copy of the method to drift. */
+function VsMarketMethodNote({ method, scope }: { method: VsMarketMethod; scope?: VsMarket["scope"] }) {
+  const lines = METHOD_ORDER.map((k) => method[k]).filter(
+    (v): v is string => typeof v === "string" && v.length > 0,
+  );
+  return (
+    <>
+      {scope && (
+        <p>
+          Against the odds covers {plural(scope.n_games_total, "priced game")}
+          {scope.weekly_season != null &&
+            `; its week chart accounts for ${plural(scope.n_games_in_weekly, "game")} from ${scope.weekly_season}` +
+              (scope.n_games_outside_weekly > 0
+                ? ` and ${plural(scope.n_games_outside_weekly, "game")} outside it.`
+                : ".")}
+        </p>
+      )}
+      {lines.map((line, i) => (
+        <p key={i}>{line}</p>
+      ))}
+    </>
+  );
 }
 
 /** Flatten each yardage market's per-position errors into one table. */
@@ -259,10 +423,9 @@ function renderPoints(player_props: TrackRecord["player_props"]) {
           caption="Anytime-TD rate by predicted-probability band"
           columns={[
             { key: "label", label: "Predicted", value: (b) => b.label },
-            { key: "n", label: "Props", numeric: true, value: (b) => b.n },
             {
               key: "hit_rate",
-              label: "Rate",
+              label: "Actual rate",
               numeric: true,
               firstDir: "desc",
               value: (b) => b.hit_rate,
@@ -273,6 +436,7 @@ function renderPoints(player_props: TrackRecord["player_props"]) {
                   <span className="text-pr-text-faint">no calls</span>
                 ),
             },
+            { key: "n", label: "Props", numeric: true, value: (b) => b.n },
           ]}
         />
       )}
@@ -313,9 +477,17 @@ function AccuracyBar({ value, testId = "accuracy-bar" }: { value: number | null 
 
 function RateCell({ value, n }: { value: number | null | undefined; n: number | undefined }) {
   if (value == null) return <span className="text-pr-text-faint">—</span>;
+  // Percent-forward, like the cards: the number, its bar on the same 0-100
+  // scale (50% marker included), then the count behind it in parens.
+  const width = Math.min(100, Math.max(0, value * 100));
   return (
-    <span className="tr-num" data-testid="rate">
-      {rate(value)} <span className="text-pr-text-faint">({n ?? "—"})</span>
+    <span className="tr-ratecell" data-testid="rate">
+      <span className="tr-num font-semibold">{rate(value)}</span>
+      <span className="tr-bar tr-bar-mini" aria-hidden="true">
+        <span className="tr-bar-fill" style={{ width: `${width}%` }} />
+        <span className="tr-bar-marker" />
+      </span>
+      <span className="text-pr-text-faint">({n ?? "—"})</span>
     </span>
   );
 }

@@ -23,6 +23,7 @@ import type {
   StandingsEntry,
   TeamForm,
   TrackRecord,
+  TrackRecordPicks,
   WeekPrediction,
 } from "../types";
 
@@ -102,7 +103,16 @@ export function createApiClient(baseUrl: string): SportApi {
     playerProps: (season, week) => get<PlayerPropPrediction[]>(`/players/${season}/${week}/props`),
     playerOut: (season, week) => get<OutPlayerEntry[]>(`/players/${season}/${week}/out`),
     marketLines: (season, week) => get(`/players/${season}/${week}/market-lines`),
-    trackRecord: () => get<TrackRecord>("/track-record"),
+    // `picks=deferred` is the payload-split contract: a backend that knows it
+    // returns the summary with NO row-level picks (CFB's summary was 5.9 MB,
+    // almost all of it `player_props.per_pick` rows no surface renders), and
+    // the rows are fetched from /track-record/picks only when the reader
+    // opens the every-pick fold. A backend older than the split ignores the
+    // unknown parameter and returns the full payload, picks inlined — the
+    // page detects them and never calls the picks route, so nothing changes
+    // in production until the backend half lands.
+    trackRecord: () => get<TrackRecord>("/track-record?picks=deferred"),
+    trackRecordPicks: () => get<TrackRecordPicks>("/track-record/picks"),
     retrain: () => post<RetrainResponse>("/retrain"),
     gameVerdict: (gameId) => getOrNull<GameVerdict>(`/games/${gameId}/verdict`),
     /** Spec §3's per-fixture signal payloads. Present on both clients because

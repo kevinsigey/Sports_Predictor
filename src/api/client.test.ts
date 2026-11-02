@@ -40,6 +40,25 @@ describe("createApiClient new endpoints", () => {
       expect.anything(),
     );
   });
+
+  it("trackRecord asks for the summary with picks deferred, never the bare route", async () => {
+    const api = createApiClient("https://example.test/api/");
+    await api.trackRecord();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.test/api/track-record?picks=deferred",
+      expect.anything(),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith("https://example.test/api/track-record", expect.anything());
+  });
+
+  it("trackRecordPicks hits the split picks route", async () => {
+    const api = createApiClient("https://example.test/api/");
+    // Optional in SportApi (an older backend may not serve the route); the
+    // real client always provides it.
+    expect(api.trackRecordPicks).toBeDefined();
+    await api.trackRecordPicks!();
+    expect(fetchMock).toHaveBeenCalledWith("https://example.test/api/track-record/picks", expect.anything());
+  });
 });
 
 describe("createApiClient TTL cache", () => {
