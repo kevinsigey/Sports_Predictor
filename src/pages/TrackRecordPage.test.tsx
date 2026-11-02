@@ -116,9 +116,48 @@ const CFB_RECORD: TrackRecord = {
   },
 } as unknown as TrackRecord;
 
+/** NFL with a `vs_market` block: the disagreement cohort is 2 of 3 over 6
+ *  priced games. Method strings are the backend's own, verbatim — the page
+ *  prints them, it does not paraphrase them. */
+const NFL_RECORD_VS: TrackRecord = {
+  ...NFL_RECORD,
+  games: {
+    ...NFL_RECORD.games,
+    vs_market: {
+      n: 6,
+      mean_implied_home_cover_prob: 0.45,
+      mean_model_home_cover_prob: 0.5,
+      mean_edge_points: 5.7,
+      disagreement_n: 3,
+      disagreement_hit_rate: 0.667,
+      disagreement: { n: 3, hit_rate: 0.667, games: ["2026_01_KC_BAL", "2026_02_BUF_MIA", "2026_03_DAL_PHI"] },
+      weekly: [],
+      scope: { population: "all_seasons", weekly_season: 2026, weekly_last_week: 3, n_games_total: 6, n_games_in_weekly: 6, n_games_outside_weekly: 0 },
+      method: {
+        sigma_league_points: 13.5,
+        sigma_league_meaning: "NFL final margin is treated as roughly Normal with a standard deviation of 13.5 points. That single number is what turns a closing spread into a probability.",
+        implied_probability: "The closing line is a margin — the home team's expected margin — so the probability that the home side covers it is Φ(−spread / 13.5).",
+        edge: "Edge is the model's cover probability minus the probability the closing line implies, in percentage points, positive when the model likes a side more than the price does. It measures disagreement with a price, not superiority.",
+        disagreement: "The disagreement cohort is the games where the model backed the side the line did not favour — a pick against the price.",
+        not_a_profit_claim: "This is agreement with a price, not a profit claim. No figure here is a return, a yield, a stake or a cent.",
+        population: "The headline figure covers every game the tracker holds a line, both cover probabilities and a final score for, in every season.",
+      },
+    },
+  },
+};
+
+/** The split payload shape: the same record with NO inlined per-pick rows.
+ *  The rows arrive from `/track-record/picks` when the fold opens. */
+const NFL_RECORD_SPLIT: TrackRecord = {
+  ...NFL_RECORD,
+  games: { ...NFL_RECORD.games, per_pick: undefined },
+};
+
 const trackRecord = vi.fn(async (): Promise<TrackRecord> => NFL_RECORD);
+const trackRecordPicks = vi.fn(async () => ({ per_pick: NFL_RECORD.games.per_pick ?? [] }));
 const api = {
   trackRecord,
+  trackRecordPicks,
   games: vi.fn(), gamePrediction: vi.fn(), playerProps: vi.fn(),
   retrain: vi.fn(), gameVerdict: vi.fn(), predictionsForWeek: vi.fn(),
   currentWeek: vi.fn(), standings: vi.fn(), powerRankings: vi.fn(),
@@ -132,6 +171,8 @@ vi.mock("../context/SportContext", () => ({
 beforeEach(() => {
   trackRecord.mockReset();
   trackRecord.mockResolvedValue(NFL_RECORD);
+  trackRecordPicks.mockReset();
+  trackRecordPicks.mockResolvedValue({ per_pick: NFL_RECORD.games.per_pick ?? [] });
 });
 
 async function renderPage() {
@@ -355,5 +396,146 @@ describe("loading and error", () => {
     trackRecord.mockRejectedValue(new Error("down"));
     render(<TrackRecordPage />);
     expect(await screen.findByRole("alert")).toHaveTextContent(/down/);
+  });
+});
+
+// --- 9. against the odds ----------------------------------------------------
+
+describe("against the odds", () => {
+  it("leads with the disagreement rate, percent-forward, with its count", async () => {
+    trackRecord.mockResolvedValue(NFL_RECORD_VS);
+    await renderPage();
+    const block = document.getElementById("tr-vs-market")!;
+    const card = within(block).getByTestId("vs-market-disagreement");
+    // 2 of the 3 disagreements covered: the big number is the percent, and
+    // the count behind it sits in the same card.
+    expect(card).toHaveTextContent("67%");
+    expect(card).toHaveTextContent("3 disagreements of 6 priced games");
+    expect(card.querySelector(".tr-bar-fill")).not.toBeNull();
+  });
+
+  it("prints the overall spread record beside it, over its own denominator", async () => {
+    trackRecord.mockResolvedValue(NFL_RECORD_VS);
+    await renderPage();
+    const card = within(document.getElementById("tr-vs-market")!).getByTestId("vs-market-overall");
+    expect(card).toHaveTextContent("50%"); // the fixture's pct_ats_correct
+    expect(card).toHaveTextContent("4 games graded"); // n_ats, not n_resolved
+  });
+
+  it("shows the average edge as a signed figure with its meaning in words", async () => {
+    trackRecord.mockResolvedValue(NFL_RECORD_VS);
+    await renderPage();
+    const block = document.getElementById("tr-vs-market")!;
+    expect(block).toHaveTextContent("+5.7 pts");
+    expect(block).toHaveTextContent("the model's probability sits above the line's");
+    expect(within(block).getByTestId("vs-market-cover-line")).toHaveTextContent(
+      "the closing line priced the home side at 45% to cover; the model said 50%",
+    );
+  });
+
+  it("states the backend's method once, inside how this is counted", async () => {
+    trackRecord.mockResolvedValue(NFL_RECORD_VS);
+    await renderPage();
+    const how = screen.getByText("How this is counted").closest("details")!;
+    expect(how).toHaveTextContent("not a profit claim");
+    expect(how).toHaveTextContent("Against the odds covers 6 priced games");
+    expect(how).toHaveTextContent("the games where the model backed the side the line did not favour");
+  });
+
+  it("says plainly when a sport records no market comparison", async () => {
+    await renderPage(); // the base NFL fixture carries no vs_market block
+    const block = document.getElementById("tr-vs-market")!;
+    expect(within(block).getByTestId("not-recorded")).toHaveTextContent(/No market comparison is recorded/);
+  });
+});
+
+// --- 10. yardage bias ---------------------------------------------------------
+
+describe("yardage bias", () => {
+  const summaryByText = (text: string) =>
+    Array.from(document.querySelectorAll("summary")).find((el) => el.textContent === text)!;
+
+  it("prints which way each market's error leans, beside the count", async () => {
+    await renderPage();
+    summaryByText("Yardage markets").click();
+    const block = document.getElementById("tr-yardage")!;
+    // The fixture's signed errors: passing −20.5, rushing −3.0, receiving +2.0
+    // (mean of predicted − actual, so negative runs low).
+    expect(block).toHaveTextContent("runs low by 20.5 yards");
+    expect(block).toHaveTextContent("runs low by 3.0 yards");
+    expect(block).toHaveTextContent("runs high by 2.0 yards");
+  });
+
+  it("says no lean inside the deadband, and not measured when the bias is absent", async () => {
+    const flat: TrackRecord = {
+      ...NFL_RECORD,
+      player_props: {
+        ...NFL_RECORD.player_props,
+        passing_yards: { ...NFL_RECORD.player_props.passing_yards, mean_signed_error: 0.0 },
+        rushing_yards: { ...NFL_RECORD.player_props.rushing_yards, mean_signed_error: null },
+      },
+    };
+    trackRecord.mockResolvedValue(flat);
+    await renderPage();
+    summaryByText("Yardage markets").click();
+    const block = document.getElementById("tr-yardage")!;
+    expect(block).toHaveTextContent("no lean");
+    expect(block).toHaveTextContent("bias not measured");
+  });
+});
+
+// --- 11. anytime-TD buckets, percent-forward --------------------------------
+
+describe("anytime-TD buckets", () => {
+  it("gives each band its actual rate as a percent with a bar and its count", async () => {
+    await renderPage();
+    const summary = Array.from(document.querySelectorAll("summary")).find((el) => el.textContent === "Points")!;
+    summary.click();
+    const table = screen.getByRole("table", { name: /anytime-TD rate by predicted-probability band/i });
+    const rows = [...table.querySelectorAll<HTMLElement>("tbody tr")];
+    expect(rows).toHaveLength(3);
+    const top = rows.find((r) => r.textContent?.includes("70%+"))!;
+    expect(top).toHaveTextContent("100%");
+    expect(top).toHaveTextContent("(2)");
+    expect(top.querySelector(".tr-bar-mini")).not.toBeNull();
+    // A band with no calls says so instead of printing a rate.
+    const empty = rows.find((r) => r.textContent?.includes("60-70%"))!;
+    expect(empty).toHaveTextContent("no calls");
+  });
+});
+
+// --- 12. split payload: picks load when the fold opens ----------------------
+
+describe("split payload", () => {
+  it("never calls the picks route when the summary inlines the rows", async () => {
+    await renderPage();
+    screen.getByText("Every recorded pick").click();
+    expect(screen.getByRole("table", { name: /per-pick detail/i })).toBeInTheDocument();
+    expect(trackRecordPicks).not.toHaveBeenCalled();
+  });
+
+  it("fetches the rows only when the fold opens, then fills the table and the latest strip", async () => {
+    trackRecord.mockResolvedValue(NFL_RECORD_SPLIT);
+    await renderPage();
+    // The fold is offered, nothing has been fetched, and the latest strip is
+    // empty until the rows exist — the summary alone cannot invent them.
+    expect(trackRecordPicks).not.toHaveBeenCalled();
+    expect(within(document.getElementById("tr-recent")!).queryAllByTestId("recent-pick")).toHaveLength(0);
+
+    screen.getByText("Every recorded pick").click();
+    const table = await screen.findByRole("table", { name: /per-pick detail/i });
+    expect(trackRecordPicks).toHaveBeenCalledTimes(1);
+    expect([...table.querySelectorAll("tbody tr")]).toHaveLength(3);
+    // The same rows fill the latest-counted-picks strip (2 counted, pre-kickoff).
+    expect(within(document.getElementById("tr-recent")!).getAllByTestId("recent-pick")).toHaveLength(2);
+  });
+
+  it("says so when the picks route fails, and does not retry on its own", async () => {
+    trackRecord.mockResolvedValue(NFL_RECORD_SPLIT);
+    trackRecordPicks.mockRejectedValue(new Error("gone"));
+    await renderPage();
+    screen.getByText("Every recorded pick").click();
+    expect(await screen.findByText(/couldn't load the pick-by-pick detail/i)).toBeInTheDocument();
+    expect(trackRecordPicks).toHaveBeenCalledTimes(1);
   });
 });
