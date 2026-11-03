@@ -34,9 +34,12 @@
 // the parameter and inlines the rows; the page reads them from there and
 // never calls the picks route.
 //
-// Prop grading (NBA parity) sits between "Against the odds" and the folded
-// prop blocks as its own panel with its own route (`/prop-grading`): it
-// renders nothing until a backend serves graded days.
+// Prop grading's aggregates sit between "Against the odds" and the folded
+// prop blocks: the per-line grades moved into each fixture's detail (a line
+// is meaningless scrolled past without its match), and this page keeps what
+// the lines add up to — per-stat MAE, bias, grade bands and a daily trend,
+// computed from the graded lines on their own route (`/prop-grading`). The
+// block renders nothing until a backend serves counted lines.
 
 import { useEffect, useRef, useState } from "react";
 import type { PerPickRow, TrackRecord, VsMarket, VsMarketMethod, YardageTrackRecord } from "../types";
@@ -52,7 +55,7 @@ import {
   WeekStrip,
   momentFor,
 } from "../predictor-ui";
-import PropGradingPanel from "../components/PropGradingPanel";
+import PropModelTracking from "../components/PropModelTracking";
 import { brier, edgeWord, plural, rate, signedPoints } from "../lib/trackFormat";
 import { labelFor, toRecordModel } from "../lib/recordModel";
 import "./track-record.css";
@@ -168,12 +171,14 @@ export function TrackRecordPage() {
         )}
       </RecordBlock>
 
-      {/* Prop grading: every counted player projection against the box
-          score, NBA parity. The panel fetches its own route and renders
-          nothing at all until a backend serves graded days — no chrome,
-          no empty state — so its place in the flow is safe before the
-          backends land. */}
-      <PropGradingPanel />
+      {/* Player prop model: the graded lines' aggregates — how good the
+          model is at predicting player outcomes, per stat, with the daily
+          trend. The per-line grades themselves are in each fixture's
+          detail, where the match gives them their context. The block
+          fetches its own route and renders nothing at all until a backend
+          serves counted lines — no chrome, no empty state — so its place
+          in the flow is safe before the backends land. */}
+      <PropModelTracking />
 
       {/* Yardage markets: how far off the projected yardage was, per market. */}
       <details className="rounded-pr border border-pr-rule bg-pr-panel px-4 py-3 text-sm">

@@ -115,8 +115,9 @@ export function createApiClient(baseUrl: string): SportApi {
     trackRecord: () => get<TrackRecord>("/track-record?picks=deferred"),
     trackRecordPicks: () => get<TrackRecordPicks>("/track-record/picks"),
     // Prop grading, NBA parity: counted projections graded against the box
-    // score. A backend that does not serve the route yet 404s; the panel
-    // swallows every failure and renders nothing (see PropGradingPanel).
+    // score. A backend that does not serve the route yet 404s; the surfaces
+    // swallow every failure and render nothing (the aggregates on the track
+    // record page, the per-line grades in the fixture detail).
     propGrading: () => get<PropGrading>("/prop-grading"),
     retrain: () => post<RetrainResponse>("/retrain"),
     gameVerdict: (gameId) => getOrNull<GameVerdict>(`/games/${gameId}/verdict`),

@@ -626,8 +626,8 @@ export interface SportApi {
   /** `GET /prop-grading` — counted player projections graded against the box
    *  score (see PropGrading). Optional because the route is newer than this
    *  frontend: a backend that does not serve it yet 404s, and the grading
-   *  panel treats any failure — or a payload with no days — as absence and
-   *  renders nothing at all. */
+   *  surfaces treat any failure — or a payload with no days — as absence and
+   *  render nothing at all. */
   propGrading?: () => Promise<PropGrading>;
   retrain: () => Promise<RetrainResponse>;
   gameVerdict: (gameId: string) => Promise<GameVerdict | null>;

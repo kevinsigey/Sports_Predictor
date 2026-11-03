@@ -17,11 +17,12 @@ import type { Explanation, FlowState, MatchupContext } from "../predictor-ui";
 // segments it draws.
 import { panelFacts } from "../predictor-ui/lib/panelFacts";
 import { useEffect, useMemo, useState } from "react";
-import type { GamePrediction, GameSummary, GameVerdict, HeadToHead as HeadToHeadData, OutPlayerEntry, PlayerPropPrediction, PlayerPropsTrackRecord, SportApi, TeamForm, WeekPrediction } from "../types";
+import type { GamePrediction, GameSummary, GameVerdict, HeadToHead as HeadToHeadData, OutPlayerEntry, PlayerPropPrediction, PlayerPropsTrackRecord, PropGrading, SportApi, TeamForm, WeekPrediction } from "../types";
 // The ranking itself: which rows, under which heading, and what each row says
 // about itself. `PicksList` renders; this decides the words.
 import { buildPicksPanel, eligiblePlayers, NO_GRADED_RECORD } from "../lib/picksPanel";
 import { LineChecker } from "./LineChecker";
+import GamePropGrading from "./GamePropGrading";
 import type { MarketLine } from "../lib/lineCheck";
 import { TeamName } from "./TeamName";
 import { MarketBar } from "./MarketBar";
@@ -270,6 +271,10 @@ export function GameDetailModal({ game, api, weekPrediction, weekPredictions, on
   // on the props ranked an out player until /out answered. The panel waits for this.
   const [outResolved, setOutResolved] = useState(false);
   const [propsTrack, setPropsTrack] = useState<PlayerPropsTrackRecord | null>(null);
+  // This fixture's graded prop lines, out of the `/prop-grading` payload.
+  // `null` until the payload lands, and it stays `null` on any failure: the
+  // section it feeds renders nothing rather than an error (see the fetch).
+  const [propGrading, setPropGrading] = useState<PropGrading | null>(null);
   const [verdict, setVerdict] = useState<GameVerdict | null>(null);
   const [homeForm, setHomeForm] = useState<TeamForm | null>(null);
   const [awayForm, setAwayForm] = useState<TeamForm | null>(null);
@@ -371,6 +376,7 @@ export function GameDetailModal({ game, api, weekPrediction, weekPredictions, on
     setPrediction(null); setPredictionError(null); setAllProps(null); setPropsLoading(true); setVerdict(null);
     setHomeForm(null); setAwayForm(null); setH2h(null);
     setOutPlayers([]); setOutUnavailable(false); setOutResolved(false); setPropsTrack(null);
+    setPropGrading(null);
     // The team filter belongs to the fixture, not the session: reopening the
     // default (home) with every game, or Away would hide the next game's home box score.
     setTeamPick(null);
@@ -460,6 +466,20 @@ export function GameDetailModal({ game, api, weekPrediction, weekPredictions, on
       api.gameVerdict(game.game_id)
         .then((r) => { if (!cancelled) setVerdict(r); })
         .catch(() => { if (!cancelled) setVerdict(null); });
+    }
+
+    // Prop grading for THIS fixture: the whole payload, from which the
+    // section below picks this game's rows by its own id. Finals only — an
+    // unplayed fixture has no graded lines, and asking would spend a request
+    // to learn nothing. Every failure is silence, like the signal rows:
+    // a missing method (a client or stub from before the route), a 404 and
+    // a network error all leave `null`, and the section renders nothing.
+    // The per-line grades live here, in the match's context; the track
+    // record keeps only the aggregates they add up to.
+    if (isFinal && typeof api.propGrading === "function") {
+      api.propGrading()
+        .then((r) => { if (!cancelled) setPropGrading(r ?? null); })
+        .catch(() => { if (!cancelled) setPropGrading(null); });
     }
 
     // Recent form for both teams + head-to-head history. Missing data is
@@ -723,6 +743,13 @@ export function GameDetailModal({ game, api, weekPrediction, weekPredictions, on
               )}
             </section>
           )}
+
+          {/* Prop grading: this game's counted player projections against
+              its box score, right under the verdict — the per-line grades
+              belong to the match, so they live here and not on the track
+              record page. Renders nothing until the payload carries this
+              game's rows, and nothing at all for an unplayed fixture. */}
+          {isFinal && <GamePropGrading grading={propGrading} gameId={game.game_id} />}
 
           {/* Recent form & head-to-head — renders whatever resolved; missing
               data is not an error. */}
